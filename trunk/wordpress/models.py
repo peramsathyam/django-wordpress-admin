@@ -1,11 +1,13 @@
 from django.db import models
+import urllib2
 
 class Category(models.Model):
     cat_id = models.AutoField(primary_key=True)
     cat_name = models.CharField("Name", max_length=165)
     category_nicename = models.SlugField("Slug", prepopulate_from=("cat_name",))
     category_description = models.TextField("Description", blank=True)
-    category_parent = models.IntegerField() #TODO change to ForeignKey
+    category_parent = models.IntegerField(editable=False)
+    django_parent = models.ForeignKey("self", verbose_name="Category parent")
     category_count = models.IntegerField()
     link_count = models.IntegerField()
     posts_private = models.IntegerField()
@@ -20,6 +22,14 @@ class Category(models.Model):
 
     def __unicode__(self):
         return self.cat_name
+    
+    def save(self):
+        #Copy Django field to WP field
+        if self.django_parent:
+            self.category_parent = self.django_parent.cat_id
+        else:
+            self.category_parent = 0
+        super(Category, self).save()
 
 
 class Link(models.Model):
@@ -116,7 +126,7 @@ class Post(models.Model):
     post_modified = models.DateTimeField(auto_now=True, editable=False)
     post_modified_gmt = models.DateTimeField(auto_now=True, editable=False)
     post_content_filtered = models.TextField(blank=True, editable=False)
-    post_parent = models.IntegerField(blank=True, editable=False) #TODO change to ForeignKey
+    post_parent = models.IntegerField(default=0, editable=False)
     guid = models.CharField(max_length=255, blank=True, editable=False) 
     menu_order = models.IntegerField(blank=True, editable=False)
     post_type = models.CharField(choices=TYPE_CHOICES, max_length=60, editable=False)
@@ -147,6 +157,11 @@ class Post(models.Model):
         return self.post_title
         
     def save(self):
+        #Copy Django field to WP field
+        if self.django_parent:
+            self.post_parent = self.django_parent.cat_id
+        else:
+            self.post_parent = 0
         self.post_type = 'post'
         super(Page, self).save()
         
@@ -165,7 +180,8 @@ class Page(models.Model):
     ping_status = models.CharField(choices=STATUS_CHOICES,max_length=18)
     post_status = models.CharField("Page Status", choices=POST_CHOICES, max_length=30)
     post_password = models.CharField("Page Password", blank=True, max_length=60)
-    post_parent = models.IntegerField("Page Parent", default=0) #TODO change to ForeignKey
+    post_parent = models.IntegerField(editable=False)
+    django_parent = models.ForeignKey("self", blank=True, verbose_name='Page Parent')
     post_name = models.SlugField("Page Slug", prepopulate_from=("post_title",))
     post_author = models.IntegerField("Page Author", default=1)
     menu_order = models.IntegerField("Page Order", default=0)
@@ -186,18 +202,25 @@ class Page(models.Model):
         
     class Meta:
         db_table = u'wp_posts'
-        ordering = ['menu_order', 'post_date', 'post_title']
+        ordering = ['django_parent', 'menu_order', 'post_date', 'post_title']
 
     class Admin:
         manager = PageManager()
-        list_display = ('post_title', 'post_date', 'post_status')
+        list_display = ('__unicode__', 'post_date', 'post_status')
         list_filter = ('post_status',)
         search_fields = ('post_title', 'post_content')
 
     def __unicode__(self):
-        return self.post_title
+        if self.post_parent:
+            return '%s :: %s' % (self.django_parent.post_title, self.post_title)
+        else:
+            return self.post_title
 
     def save(self):
+        try:
+            self.post_parent = self.django_parent.id
+        except Page.DoesNotExist:
+            self.post_parent = 0
         self.post_type = 'page'
         super(Page, self).save()
 
@@ -209,10 +232,12 @@ class UploadManager(models.Manager):
 
 class Upload(models.Model):
     id = models.AutoField(primary_key=True)
-    guid = models.FileField("File", upload_to='uploads')
+    guid = models.FileField("File", upload_to='uploads', core=True)
     post_title = models.CharField("Title", blank=True, max_length=255)
     post_content = models.TextField("Description", blank=True)
-    post_parent = models.IntegerField("Associated Post") #TODO change to ForeignKey
+    post_parent = models.IntegerField("Associated Post", editable=False)
+    #Don't know of a good way to have uploads link to Posts and Pages, so I just chose Posts
+    django_parent = models.ForeignKey(Post, verbose_name="Associated Post", edit_inline=True) 
     #Not used for file uploads    
     post_date = models.DateTimeField(auto_now_add=True, editable=False)
     post_date_gmt = models.DateTimeField(auto_now_add=True, editable=False)
@@ -235,14 +260,18 @@ class Upload(models.Model):
         ordering = ['post_date',]
     class Admin:
         manager = UploadManager()
-        list_display = ('post_title', 'post_mime_type', 'post_date', 'post_content',)
+        list_display = ('post_title', 'django_parent', 'post_mime_type', 'post_date', 'post_content',)
         list_filter = ('post_mime_type',)
     def __unicode__(self):
         return self.post_title
     def save(self):
+        try:    #TODO clean this up and handle errors gracefully
+            info = urllib2.urlopen(field_data).info()
+            self.post_mime_type = info['content-type']
+        except: #couldn't determine file mime type
+            pass 
         self.post_type = 'attachment'
         super(Upload, self).save()
-
 
 class PostMeta(models.Model):
     meta_id = models.AutoField(primary_key=True)
