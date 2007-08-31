@@ -1,12 +1,15 @@
 from django.db import models
 import urllib2
+from django.conf import settings
+
+WP_PREFIX = getattr(settings, 'WORDPRESS_TABLE_PREFIX', u'wp_')
+
 
 class Category(models.Model):
     cat_id = models.AutoField("ID", primary_key=True)
     cat_name = models.CharField("Name", max_length=165)
     category_nicename = models.SlugField("Slug", prepopulate_from=("cat_name",))
-    category_parent = models.IntegerField(editable=False, blank=True)
-    django_parent = models.ForeignKey("self", verbose_name="Category parent", blank=True)
+    category_parent = models.ForeignKey("self", verbose_name="Category parent", blank=True, db_column='category_parent')
     category_description = models.TextField("Description", blank=True)
  
     category_count = models.IntegerField(default=0, editable=False)
@@ -15,7 +18,7 @@ class Category(models.Model):
     links_private = models.IntegerField(default=0, editable=False)
 
     class Meta:
-        db_table = u'wp_categories'
+        db_table = u'%scategories' % WP_PREFIX
         verbose_name_plural = 'Categories'
 
     class Admin:
@@ -25,11 +28,6 @@ class Category(models.Model):
         return self.cat_name
     
     def save(self):
-        #Copy Django field to WP field
-        if self.django_parent:
-            self.category_parent = self.django_parent.cat_id
-        else:
-            self.category_parent = 0
         super(Category, self).save()
 
 TARGET_CHOICES = (
@@ -46,7 +44,7 @@ class Link(models.Model):
     link_name = models.CharField("Name", max_length=255)
     link_url = models.CharField("Address", max_length=255)
     link_description = models.CharField("Description", blank=True, max_length=255)
-    categories = models.ManyToManyField(Category, filter_interface=models.HORIZONTAL)
+    categories = models.ManyToManyField(Category, db_table=u'%slink2cat' % WP_PREFIX, filter_interface=models.HORIZONTAL)
     link_target = models.CharField("Target", choices=TARGET_CHOICES, max_length=75)
     link_visible = models.CharField(max_length=3, choices=YES_NO_CHOICE, default='Y') 
     link_rel = models.CharField("rel", help_text="Link Relationship (XFN)", blank=True, max_length=255)
@@ -59,7 +57,7 @@ class Link(models.Model):
     link_rss = models.URLField(max_length=255, blank=True)
 
     class Meta:
-        db_table = u'wp_links'
+        db_table = u'%slinks' % WP_PREFIX
  
     class Admin:
         list_display = ('link_name', 'link_url')
@@ -83,7 +81,7 @@ class WordpressOption(models.Model):
     autoload = models.CharField(max_length=9)
 
     class Meta:
-        db_table = u'wp_options'
+        db_table = u'%soptions' % WP_PREFIX
         ordering = ['option_name',]
 
     class Admin:
@@ -120,7 +118,7 @@ class Post(models.Model):
     id = models.AutoField(primary_key=True)
     post_title = models.CharField("Title", max_length=255)
     post_content = models.TextField("Post")
-    categories = models.ManyToManyField(Category, filter_interface=models.HORIZONTAL)
+    categories = models.ManyToManyField(Category, db_table=u'%spost2cat' % WP_PREFIX, filter_interface=models.HORIZONTAL)
     #Discussion
     comment_status = models.CharField(choices=STATUS_CHOICES,max_length=45)
     ping_status = models.CharField(choices=STATUS_CHOICES,max_length=18)
@@ -145,7 +143,7 @@ class Post(models.Model):
     comment_count = models.IntegerField(default=0, editable=False)
 
     class Meta:
-        db_table = u'wp_posts'
+        db_table = u'%sposts' % WP_PREFIX
         ordering = ['-post_date',]
 
     class Admin:
@@ -168,11 +166,6 @@ class Post(models.Model):
         return self.post_title
         
     def save(self):
-        #Copy Django field to WP field
-        if self.django_parent:
-            self.post_parent = self.django_parent.cat_id
-        else:
-            self.post_parent = 0
         self.post_type = 'post'
         super(Page, self).save()
         
@@ -191,8 +184,7 @@ class Page(models.Model):
     ping_status = models.CharField(choices=STATUS_CHOICES,max_length=18)
     post_status = models.CharField("Page Status", choices=POST_CHOICES, max_length=30)
     post_password = models.CharField("Page Password", blank=True, max_length=60)
-    post_parent = models.IntegerField(editable=False)
-    django_parent = models.ForeignKey("self", blank=True, verbose_name='Page Parent')
+    post_parent = models.ForeignKey("self", blank=True, db_column='post_parent', related_name="Child")
     post_name = models.SlugField("Page Slug", prepopulate_from=("post_title",))
     post_author = models.IntegerField("Page Author", default=1)
     menu_order = models.IntegerField("Page Order", default=0)
@@ -212,8 +204,8 @@ class Page(models.Model):
     post_category = models.IntegerField(editable=False, blank=True)
         
     class Meta:
-        db_table = u'wp_posts'
-        ordering = ['django_parent', 'menu_order', 'post_date', 'post_title']
+        db_table = u'%sposts' % WP_PREFIX
+        ordering = ['post_parent', 'menu_order', 'post_date', 'post_title']
 
     class Admin:
         manager = PageManager()
@@ -223,15 +215,11 @@ class Page(models.Model):
 
     def __unicode__(self):
         if self.post_parent:
-            return '%s :: %s' % (self.django_parent.post_title, self.post_title)
+            return '%s :: %s' % (self.post_parent.post_title, self.post_title)
         else:
             return self.post_title
 
     def save(self):
-        try:
-            self.post_parent = self.django_parent.id
-        except Page.DoesNotExist:
-            self.post_parent = 0
         self.post_type = 'page'
         super(Page, self).save()
 
@@ -246,9 +234,8 @@ class Upload(models.Model):
     guid = models.FileField("File", upload_to='uploads', core=True)
     post_title = models.CharField("Title", blank=True, max_length=255)
     post_content = models.TextField("Description", blank=True)
-    post_parent = models.IntegerField("Associated Post", editable=False)
     #Don't know of a good way to have uploads link to Posts and Pages, so I just chose Posts
-    django_parent = models.ForeignKey(Post, verbose_name="Associated Post", edit_inline=True) 
+    post_parent = models.ForeignKey(Post, verbose_name="Associated Post", edit_inline=True, db_column='post_parent')
     #Not used for file uploads    
     post_date = models.DateTimeField(auto_now_add=True, editable=False)
     post_date_gmt = models.DateTimeField(auto_now_add=True, editable=False)
@@ -267,11 +254,11 @@ class Upload(models.Model):
     comment_count = models.IntegerField(blank=True, editable=False)
     objects = UploadManager()
     class Meta:
-        db_table = u'wp_posts'
+        db_table = u'%sposts' % WP_PREFIX
         ordering = ['post_date',]
     class Admin:
         manager = UploadManager()
-        list_display = ('post_title', 'django_parent', 'post_mime_type', 'post_date', 'post_content',)
+        list_display = ('post_title', 'post_parent', 'post_mime_type', 'post_date', 'post_content',)
         list_filter = ('post_mime_type',)
     def __unicode__(self):
         return self.post_title
@@ -304,7 +291,7 @@ class PageMeta(models.Model):
     meta_value = models.TextField(blank=True)
 
     class Meta:
-        db_table = u'wp_postmeta'
+        db_table = u'%spostmeta' % WP_PREFIX
         verbose_name = 'Custom Field'
 
     def __unicode__(self):
@@ -335,7 +322,7 @@ class WordpressComment(models.Model):
     user_id = models.IntegerField()
 
     class Meta:
-        db_table = u'wp_comments'
+        db_table = u'%scomments' % WP_PREFIX
         ordering = ['-comment_date', 'comment_post']
 
     class Admin:
@@ -370,7 +357,7 @@ class WordpressUser(models.Model):
     display_name = models.CharField(max_length=255)
 
     class Meta:
-        db_table = u'wp_users'
+        db_table = u'%susers' % WP_PREFIX
         
         
 class UserMeta(models.Model):
@@ -380,4 +367,4 @@ class UserMeta(models.Model):
     meta_value = models.TextField(blank=True)
 
     class Meta:
-        db_table = u'wp_usermeta'
+        db_table = u'%susermeta' % WP_PREFIX
