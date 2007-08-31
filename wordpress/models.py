@@ -184,7 +184,7 @@ class Page(models.Model):
     ping_status = models.CharField(choices=STATUS_CHOICES,max_length=18)
     post_status = models.CharField("Page Status", choices=POST_CHOICES, max_length=30)
     post_password = models.CharField("Page Password", blank=True, max_length=60)
-    post_parent = models.ForeignKey("self", blank=True, db_column='post_parent', related_name="Child")
+    post_parent = models.ForeignKey("self", blank=True, db_column='post_parent')
     post_name = models.SlugField("Page Slug", prepopulate_from=("post_title",))
     post_author = models.IntegerField("Page Author", default=1)
     menu_order = models.IntegerField("Page Order", default=0)
@@ -214,6 +214,8 @@ class Page(models.Model):
         search_fields = ('post_title', 'post_content')
 
     def __unicode__(self):
+        return self.post_title
+        #TODO there is an issue with the code below. Django may not like it when self.post_parent = 0
         if self.post_parent:
             return '%s :: %s' % (self.post_parent.post_title, self.post_title)
         else:
