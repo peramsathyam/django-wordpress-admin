@@ -1,5 +1,5 @@
 #labels Featured,Phase-Deploy
   # Copy wordpress folder into your project (it is a standalone app)
-  # Point your project's settings.py to your WordPress database.
+  # Point your project's settings.py to your WordPress database and add wordpress to your installed app list.
   # If your wordpress database prefix is not the default, {{{wp_}}}, you can set it in your project settings by using {{{WORDPRESS_TABLE_PREFIX = u'mywpprefix_'}}}
   # {{{manage.py syncdb}}}
