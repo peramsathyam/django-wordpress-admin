@@ -1,7 +1,5 @@
 #labels Featured,Phase-Deploy
   # Copy wordpress folder into your project (it is a standalone app)
   # Point your project's settings.py to your WordPress database.
-  # Run the database migration script: {{{ mysql -u MYSQLUSER -p MYSQLDB < migrate_db.sql }}}
+  # If your wordpress database prefix is not {{{wp_}}}, you can set it in your project settings by using {{{WORDPRESS_TABLE_PREFIX = u'mywpprefix_'}}}
   # {{{manage.py syncdb}}}
-
-NB: The database migration script clones a couple of tables and columns so they can be utilized in Django. It should not prevent your database from continuing to be used in WordPress.
