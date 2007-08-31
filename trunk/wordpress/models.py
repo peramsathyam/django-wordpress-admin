@@ -236,12 +236,12 @@ class Page(models.Model):
         super(Page, self).save()
 
 
-class FileManager(models.Manager):
+class UploadManager(models.Manager):
     def get_query_set(self):
-        return super(FileManager, self).get_query_set().filter(post_type='attachment')
+        return super(UploadManager, self).get_query_set().filter(post_type='attachment')
 
 
-class File(models.Model):
+class Upload(models.Model):
     id = models.AutoField(primary_key=True)
     guid = models.FileField("File", upload_to='uploads', core=True)
     post_title = models.CharField("Title", blank=True, max_length=255)
@@ -265,12 +265,12 @@ class File(models.Model):
     post_type = models.CharField(choices=TYPE_CHOICES, max_length=60, editable=False)
     post_mime_type = models.CharField(max_length=255, editable=False)
     comment_count = models.IntegerField(blank=True, editable=False)
-    objects = FileManager()
+    objects = UploadManager()
     class Meta:
         db_table = u'wp_posts'
         ordering = ['post_date',]
     class Admin:
-        manager = FileManager()
+        manager = UploadManager()
         list_display = ('post_title', 'django_parent', 'post_mime_type', 'post_date', 'post_content',)
         list_filter = ('post_mime_type',)
     def __unicode__(self):
@@ -282,7 +282,7 @@ class File(models.Model):
         except: #couldn't determine file mime type
             pass 
         self.post_type = 'attachment'
-        super(File, self).save()
+        super(Upload, self).save()
 
 class PostMeta(models.Model):
     meta_id = models.AutoField(primary_key=True)
