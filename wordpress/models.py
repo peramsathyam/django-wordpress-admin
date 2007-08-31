@@ -2,23 +2,24 @@ from django.db import models
 import urllib2
 
 class Category(models.Model):
-    cat_id = models.AutoField(primary_key=True)
+    cat_id = models.AutoField("ID", primary_key=True)
     cat_name = models.CharField("Name", max_length=165)
     category_nicename = models.SlugField("Slug", prepopulate_from=("cat_name",))
+    category_parent = models.IntegerField(editable=False, blank=True)
+    django_parent = models.ForeignKey("self", verbose_name="Category parent", blank=True)
     category_description = models.TextField("Description", blank=True)
-    category_parent = models.IntegerField(editable=False)
-    django_parent = models.ForeignKey("self", verbose_name="Category parent")
-    category_count = models.IntegerField()
-    link_count = models.IntegerField()
-    posts_private = models.IntegerField()
-    links_private = models.IntegerField()
+ 
+    category_count = models.IntegerField(default=0, editable=False)
+    link_count = models.IntegerField(default=0, editable=False)
+    posts_private = models.IntegerField(default=0, editable=False)
+    links_private = models.IntegerField(default=0, editable=False)
 
     class Meta:
         db_table = u'wp_categories'
         verbose_name_plural = 'Categories'
 
     class Admin:
-        pass
+        list_display = ('cat_id', 'cat_name', 'category_description')
 
     def __unicode__(self):
         return self.cat_name
@@ -31,29 +32,39 @@ class Category(models.Model):
             self.category_parent = 0
         super(Category, self).save()
 
-
+TARGET_CHOICES = (
+    ('', 'none'),
+    ('_blank', '_blank'),
+    ('_top', '_top'),
+)
+YES_NO_CHOICE = (
+    ('Y', 'Yes'),
+    ('N', 'No'),
+)
 class Link(models.Model):
     link_id = models.AutoField(primary_key=True)
-    link_url = models.CharField(max_length=255)
-    link_name = models.CharField(max_length=255)
-    link_image = models.CharField(max_length=255)
-    link_target = models.CharField(max_length=75)
-    categories = models.ManyToManyField(Category)
-    link_description = models.CharField(max_length=255)
-    link_visible = models.CharField(max_length=3)
-    link_owner = models.IntegerField()
-    link_rating = models.IntegerField()
-    link_updated = models.DateTimeField()
-    link_rel = models.CharField(max_length=255)
-    link_notes = models.TextField()
-    link_rss = models.CharField(max_length=255)
+    link_name = models.CharField("Name", max_length=255)
+    link_url = models.CharField("Address", max_length=255)
+    link_description = models.CharField("Description", blank=True, max_length=255)
+    categories = models.ManyToManyField(Category, filter_interface=models.HORIZONTAL)
+    link_target = models.CharField("Target", choices=TARGET_CHOICES, max_length=75)
+    link_visible = models.CharField(max_length=3, choices=YES_NO_CHOICE, default='Y') 
+    link_rel = models.CharField("rel", help_text="Link Relationship (XFN)", blank=True, max_length=255)
+    #Advanced
+    link_image = models.CharField(max_length=255, blank=True)
+    link_owner = models.IntegerField(blank=True)
+    link_rating = models.IntegerField(blank=True)
+    link_updated = models.DateTimeField(auto_now=True)
+    link_notes = models.TextField(blank=True)
+    link_rss = models.URLField(max_length=255, blank=True)
 
     class Meta:
         db_table = u'wp_links'
  
     class Admin:
-        pass
-
+        list_display = ('link_name', 'link_url')
+        #TODO add advanced fieldset
+        
     def __unicode__(self):
         return self.link_name
 
@@ -109,7 +120,7 @@ class Post(models.Model):
     id = models.AutoField(primary_key=True)
     post_title = models.CharField("Title", max_length=255)
     post_content = models.TextField("Post")
-    categories = models.ManyToManyField(Category)
+    categories = models.ManyToManyField(Category, filter_interface=models.HORIZONTAL)
     #Discussion
     comment_status = models.CharField(choices=STATUS_CHOICES,max_length=45)
     ping_status = models.CharField(choices=STATUS_CHOICES,max_length=18)
@@ -225,12 +236,12 @@ class Page(models.Model):
         super(Page, self).save()
 
 
-class UploadManager(models.Manager):
+class FileManager(models.Manager):
     def get_query_set(self):
-        return super(UploadManager, self).get_query_set().filter(post_type='attachment')
+        return super(FileManager, self).get_query_set().filter(post_type='attachment')
 
 
-class Upload(models.Model):
+class File(models.Model):
     id = models.AutoField(primary_key=True)
     guid = models.FileField("File", upload_to='uploads', core=True)
     post_title = models.CharField("Title", blank=True, max_length=255)
@@ -254,12 +265,12 @@ class Upload(models.Model):
     post_type = models.CharField(choices=TYPE_CHOICES, max_length=60, editable=False)
     post_mime_type = models.CharField(max_length=255, editable=False)
     comment_count = models.IntegerField(blank=True, editable=False)
-    objects = UploadManager()
+    objects = FileManager()
     class Meta:
         db_table = u'wp_posts'
         ordering = ['post_date',]
     class Admin:
-        manager = UploadManager()
+        manager = FileManager()
         list_display = ('post_title', 'django_parent', 'post_mime_type', 'post_date', 'post_content',)
         list_filter = ('post_mime_type',)
     def __unicode__(self):
@@ -271,7 +282,7 @@ class Upload(models.Model):
         except: #couldn't determine file mime type
             pass 
         self.post_type = 'attachment'
-        super(Upload, self).save()
+        super(File, self).save()
 
 class PostMeta(models.Model):
     meta_id = models.AutoField(primary_key=True)
