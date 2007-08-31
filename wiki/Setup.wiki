@@ -1,13 +1,4 @@
-#summary Setup
 #labels Featured,Phase-Deploy
-
-= Introduction =
-
-Setup Instructions
-
-
-= Details =
-
 1. Copy wordpress folder into your project (it is a standalone app)
 2. Point your project's settings.py to your WordPress database.
 3. Either rename or create a copy of the following tables to match the Django naming scheme
